@@ -1,0 +1,17 @@
+[project]
+name = "agent-sec-lab"
+version = "0.1.0"
+description = "Deliberately vulnerable LLM agent for DevSecOps practice. Never deploy."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "httpx",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
