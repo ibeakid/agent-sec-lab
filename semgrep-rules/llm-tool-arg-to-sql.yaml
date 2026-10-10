@@ -1,0 +1,25 @@
+rules:
+  - id: llm-tool-arg-to-sql
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    paths:
+      include:
+        - "**/tools.py"
+    message: >-
+      An LLM tool argument reaches a SQL query string. The model chooses tool
+      arguments, so prompt injection turns into SQL injection. Use a
+      parameterized query: execute("... WHERE name = ?", (name,)).
+    pattern-sources:
+      - patterns:
+          - pattern-inside: |
+              def $TOOL(..., $ARG, ...):
+                ...
+          - focus-metavariable: $ARG
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $CONN.execute($QUERY, ...)
+              - pattern: $CONN.executemany($QUERY, ...)
+              - pattern: $CONN.executescript($QUERY, ...)
+          - focus-metavariable: $QUERY
