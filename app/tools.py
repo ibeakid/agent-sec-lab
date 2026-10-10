@@ -26,6 +26,7 @@ def init_db() -> None:
 def query_db(name: str) -> str:
     conn = sqlite3.connect(DB_PATH)
     # VULN (SQL injection): model-supplied value formatted straight into SQL.
+    # nosemgrep: llm-tool-arg-to-sql
     rows = conn.execute(f"SELECT name, email, role FROM users WHERE name = '{name}'").fetchall()
     conn.close()
     return "\n".join(", ".join(map(str, r)) for r in rows) or "no rows"
