@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.tools import REPO_ROOT
 
 client = TestClient(app)
 
@@ -30,6 +31,7 @@ def test_read_file_benign():
     assert "toner" in body["tool_calls"][0]["result"]
 
 
+@pytest.mark.skipif(not (REPO_ROOT / ".env").is_file(), reason=".env not present (copy .env.example)")
 def test_read_file_path_traversal_reaches_env():
     body = chat("read ../.env")
     assert "AWS_ACCESS_KEY_ID" in body["tool_calls"][0]["result"]

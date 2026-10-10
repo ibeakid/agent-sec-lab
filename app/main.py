@@ -14,6 +14,9 @@ from app.tools import REPO_ROOT, init_db
 
 
 def load_env(path: Path) -> None:
+    # .env is gitignored, so a fresh clone won't have one; fall back to the real environment.
+    if not path.is_file():
+        return
     for line in path.read_text().splitlines():
         if line and not line.startswith("#") and "=" in line:
             key, value = line.split("=", 1)
