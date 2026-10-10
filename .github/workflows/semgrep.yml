@@ -1,0 +1,23 @@
+name: semgrep
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install semgrep==1.180.0
+      - name: Test custom rules
+        run: semgrep --test --metrics=off semgrep-rules/
+      - name: Scan app
+        run: semgrep scan --config semgrep-rules/ --error --metrics=off app/
