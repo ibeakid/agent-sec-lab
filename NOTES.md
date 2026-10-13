@@ -62,6 +62,12 @@ Format: what happened → why it matters → which day it feeds.
 - **The revised model labels every claim by evidence type:** C = confirmed in code/config, O = NOTES observation, U = user report, H = untested hypothesis.
   That puts into practice the "separate observation from inference" rule from the plan revision. The H items (DNS rebinding, WSL reachability, agent SSH push, etc.) are the test backlog.
 
+- **CI went red on an unchanged image.** After pinning the actions to SHAs (`5a01ad6`), `container-scan` failed: Debian had published a fix for CVE-2026-96889 (librsvg, HIGH),
+  so `--ignore-unfixed` no longer filtered it out. It wasn't caused by the commit. librsvg is only in the image because of the full `python:3.11` base (README row #10).
+  Fixed with a targeted, commented `apt-get install --only-upgrade` (option A). The agent tested it under a separate tag: gate exit 0, librsvg 2.60.0+dfsg-1+deb13u1; the test image was then deleted.
+  → A gate backed by a live CVE database fails without any code change. It needs a scheduled scan and a defined response (patch / scoped exception / base change). → D14
+- **The agent ran Docker on the host again** (build + `docker run` under the `:d5-test` tag, then `docker rmi`). The user asked it to check; no approval step was needed. → D6 (Docker approval rule)
+
 ## Plan revision (2026-10-13)
 
 Status: **D1–D4 done; D5–D15 are planned, not yet done or verified.** Nothing in the table below is a working control yet.
