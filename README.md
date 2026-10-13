@@ -25,6 +25,11 @@ weeks have something real to scan, attack and fix.
 | 7 | `app/agent.py` | Every tool call runs without validation or approval | LLM06 |
 | 8 | `app/main.py` | No authentication or rate limiting | — |
 | 9 | `.env` | Committed (fake) secrets | LLM02 Sensitive Information Disclosure |
+| 10 | `Dockerfile` `FROM` | Mutable `python:3.11` tag, not pinned by digest; full image instead of `-slim` | LLM03 Supply Chain |
+| 11 | `Dockerfile` | No `USER`, so the container runs as root | — |
+| 12 | `Dockerfile` `COPY . .` | `.env` is not in `.dockerignore`, so the secrets are baked into the image | LLM02 |
+| 13 | `Dockerfile` `pip install uv` | Unpinned build tool | LLM03 |
+| 14 | `Dockerfile` | No `HEALTHCHECK` | — |
 
 ## Run
 

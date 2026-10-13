@@ -1,0 +1,5 @@
+# Intentional lab vulnerability (README row #12): fake .env baked into the image.
+# Remediation is planned for D10 (.dockerignore + runtime secrets). Remove these lines then.
+aws-access-key-id exp:2026-11-30
+aws-secret-access-key exp:2026-11-30
+github-pat exp:2026-11-30

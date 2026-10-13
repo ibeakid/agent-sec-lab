@@ -1,0 +1,34 @@
+name: container-scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  TRIVY_VERSION: 0.75.0
+  TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+  IMAGE: agent-sec-lab:ci
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install trivy
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o trivy.tar.gz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tar.gz" | sha256sum -c -
+          tar -xzf trivy.tar.gz trivy
+          sudo mv trivy /usr/local/bin/
+      - name: Build image
+        run: docker build -t "$IMAGE" .
+      - name: Gate (fixable HIGH/CRITICAL vulns, any secret)
+        run: trivy image --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+      - name: Full report (non-blocking)
+        if: always()
+        run: trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format table "$IMAGE"
