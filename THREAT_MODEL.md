@@ -1,4 +1,4 @@
-# Threat model – agent-sec-lab (v1, D5)
+# Threat model – agent-sec-lab (v1.1, D5)
 
 ## 1. Scope and assets
 本模型涵蓋兩個系統：
@@ -130,7 +130,7 @@ flowchart TB
 
 ## 4. STRIDE per boundary
 S：冒用；T：竄改；R：不可歸因；I：洩漏；D：耗盡資源；E：越權。
-**C**＝程式／設定確認；**O**＝NOTES 歷史觀察；**U**＝使用者回報；**H**＝待實驗假設。
+**C**＝程式／設定確認；**T**＝實驗已驗證（附日期／證據）；**O**＝NOTES 歷史觀察；**U**＝使用者回報；**H**＝待實驗假設。
 C 證明機制存在，不表示完整攻擊已驗證；「–」表示本版未優先分析。
 
 | Boundary | S | T | R | I | D | E |
@@ -141,29 +141,29 @@ C 證明機制存在，不表示完整攻擊已驗證；「–」表示本版未
 | TB4 | – | C：eval 可呼叫有寫入副作用的程式 | C：無持久化資源稽核 | C：路徑逃逸；f-string SELECT 可被操控 | C：eval 無 timeout；read_text 無大小限制 | C：eval 使用程序權限；image 無 USER |
 | TB5 | – | H：網頁指令污染模型 | C：trace 無導向目的地 | C：任意 GET／導向可作 SSRF 或 URL 外送 | C：完整 body 下載後才截斷 | H：存取 Ollama／內部服務；eval 可發其他 HTTP 方法 |
 | TB6 | H：README／MCP 冒充指令 | O：記憶與 repo 不符；投毒待測 | O：D1 規格變更授權未記錄 | H：注入誘導秘密外送 | – | H：誘導越權命令 |
-| TB7 | – | O：agent 錯誤修補需審查 | O：部分操作無逐項核准 | O：讀取秘密並輸出遮罩值 | – | O：可操作 Docker；H：使用 SSH key／agent push main |
-| TB8 | – | H：workflow／例外被改弱並 push main | – | H：建置程式外洩可讀資料 | H：惡意 PR 耗盡 runner | U：main 無保護；push 仍取決於憑證／權限 |
-| TB9 | H：來源被冒用 | C：Action／base tag 可變；uv 未固定；Semgrep 無 hash | C：輸入未全面固定 hash／digest | H：惡意元件讀取環境資料 | H：元件中斷建置 | C：元件以 hook／runner 權限執行 |
+| TB7 | – | O：agent 錯誤修補需審查 | O：部分操作無逐項核准 | O：讀取秘密並輸出遮罩值 | – | O：可操作 Docker；T：同一 SSH 憑證直接 push main 被 ruleset 拒絕（GH013，D5）；H：持 admin token 時改 ruleset 或經 API 合併 |
+| TB8 | – | T：直接 push main 被拒；C：PR 可修改 workflow 使自身 gate 失效（check 來源綁 Actions app，非特定 workflow） | C：ruleset 變更留 History，但不阻擋 admin | H：建置程式外洩可讀資料 | H：惡意 PR 耗盡 runner | T：PR＋3 required checks，失敗 PR 不可合併、無 bypass 選項（D5）；C：admin 可改 ruleset；0 approvals 可自行合併 |
+| TB9 | H：來源被冒用 | C：Actions 已固定 SHA；base tag、ubuntu-latest runner 可變；apt-get upgrade 使建置不可重現；uv 未固定；Semgrep 無 hash | C：輸入未全面固定 hash／digest | H：惡意元件讀取環境資料 | H：元件中斷建置 | C：元件以 hook／runner 權限執行 |
 
 ## 5. What CI must block (and what it can't)
 
-**目前 Blocks merge?＝否**：依使用者提供的現況，尚無有效 main 合併保護；本次未重新查核遠端 rulesets、bypass 或 CI run。Job 失敗與強制阻擋合併是不同控制。
+**Blocks merge?（D5 更新）**：ruleset `protect-main` 要求 PR 與 `gitleaks`／`semgrep`／`trivy` 三個 required checks（來源 GitHub Actions），bypass 清單空。已驗證：直接 push main 被拒；Semgrep 失敗的 PR 無法合併，修正後可合併。Gitleaks／Trivy 由同一機制阻擋，但未各自以失敗 PR 驗證。限制：admin 可修改 ruleset；PR 可修改 workflow 本身。
 
 | Risk | Control today | Blocks merge? | Planned day |
 |---|---|---|---|
-| Git 秘密 | Gitleaks history scan／hook；命中且未排除才使 job 失敗 | 否 | D5：required checks／失敗 PR |
-| SQL taint | Semgrep 自訂規則與規則測試；現有 SELECT 有 nosemgrep | 否 | D5：驗證 gate；D10：修補 |
-| Image 漏洞／秘密 | Trivy HIGH/CRITICAL、ignore-unfixed；secret rule-ID 例外不限 .env，至 2026-11-30 | 否 | D6：縮小例外、移除 image 秘密 |
-| CI 供應鏈／權限 | contents: read；Gitleaks／Trivy binary 有 SHA256；Actions 用 tag；Semgrep 固定版本但無 hash 驗證 | 否 | D5：Action SHA、含相依的完整性方案 |
+| Git 秘密 | Gitleaks history scan／hook；命中且未排除才使 job 失敗 | 是（C：required check） | – |
+| SQL taint | Semgrep 自訂規則與規則測試；現有 SELECT 有 nosemgrep | 是（T：D5 失敗 PR） | D10：修補 |
+| Image 漏洞／秘密 | Trivy HIGH/CRITICAL、ignore-unfixed；build 時 apt-get upgrade；secret rule-ID 例外不限 .env，至 2026-11-30 | 是（C：required check） | D6：縮小例外、移除 image 秘密、slim base |
+| CI 供應鏈／權限 | contents: read；Gitleaks／Trivy binary 有 SHA256；Actions 固定 SHA；Semgrep 固定版本但無 hash 驗證；runner image 未固定 | 否（非 gate） | D13：含相依與 runner 的完整性方案 |
 | API／工具越權與注入 | 無 ZAP／模型安全 gate；mock 測試刻意驗證漏洞可達，三份 workflow 未執行 pytest | 否 | D7–D10 |
 | Coding agent 主機存取 | NOTES 記錄秘密讀取／網路／Docker；CI 不控制日常 session | 否；需本機控制 | D6、D11–D12 |
 
-OSV／Syft 為 D4 分析成果，未作為這三份 workflow 的獨立 gate。Hooks 可略過；SBOM 不等於阻擋。CI 不保證模型抗所有注入、本機 agent 隔離有效，或規則／例外不被改弱。
+OSV／Syft 為 D4 分析成果，未作為這三份 workflow 的獨立 gate。Hooks 可略過（D5 以 `--no-verify` 實際略過）；SBOM 不等於阻擋。Live CVE 資料庫可使未變更的 image 轉紅（D5 兩次：librsvg、curl）。CI 不保證模型抗所有注入、本機 agent 隔離有效，或規則／例外不被改弱。
 
 ## 6. Assumptions and out of scope
 
 - **未強制部署要求**：只用假資料，主機 port 只發布至 127.0.0.1；本次未讀取 .env 值或驗證發布設定。Dockerfile 監聽 0.0.0.0，註解提供 loopback 發布命令，但 README 無 Docker 執行命令。Loopback 限制入站，不辨識本機程序、不限制出站。
 - **端點機制已確認，實際設定未確認**：llm.py 預設 localhost:11434；Dockerfile 設 host.docker.internal:11434。load_env 用 setdefault，既有環境優先；修改 .env 的 OLLAMA_URL 可在程序重新載入且無既有覆寫時改變端點。容器 localhost 不代表主機；host.docker.internal 解析／可達性待測。
-- **待測假設**：WSL／Windows 可達性、DNS rebinding（程式無 Host 驗證 middleware）、Ollama 網路／驗證狀態、coding agent SSH push 能力。SQL 工具使用單一 SELECT 的 execute，未證明 SQLi 可寫資料；stored injection 需另驗證資料寫入與回填路徑。
+- **待測假設**：WSL／Windows 可達性、DNS rebinding（程式無 Host 驗證 middleware）、Ollama 網路／驗證狀態。（coding agent SSH push main 已於 D5 驗證被阻擋。）SQL 工具使用單一 SELECT 的 execute，未證明 SQLi 可寫資料；stored injection 需另驗證資料寫入與回填路徑。
 - **證據限制**：NOTES 是歷史觀察；尚無 docs/ 注入文件。Mock 與 Agent 同程序，不跨 TB2，不能證明 qwen2.5:7b 抗注入。TOOLS 限制工具名稱集合，但沒有逐使用者授權。規劃中的防護不算已驗證。
 - **範圍外／更新條件**：正式部署、真實個資、雲端 IAM、訓練／權重投毒及第三方攻擊不納入 v1。新增工具、模型、MCP、部署／權限、CI 例外或 D8–D10 新發現時更新。
