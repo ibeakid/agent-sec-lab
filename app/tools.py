@@ -39,7 +39,7 @@ def calculate(expr: str) -> str:
 
 def lookup_role(name: str) -> str:
     conn = sqlite3.connect(DB_PATH)
-    row = conn.execute(f"SELECT role FROM users WHERE name = ?", (name,)).fetchone()
+    row = conn.execute("SELECT role FROM users WHERE name = ?", (name,)).fetchone()
     conn.close()
     return row[0] if row else "unknown"
 

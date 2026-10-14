@@ -68,9 +68,35 @@ Format: what happened → why it matters → which day it feeds.
   → A gate backed by a live CVE database fails without any code change. It needs a scheduled scan and a defined response (patch / scoped exception / base change). → D14
 - **The agent ran Docker on the host again** (build + `docker run` under the `:d5-test` tag, then `docker rmi`). The user asked it to check; no approval step was needed. → D6 (Docker approval rule)
 
+### D5 – Required checks (2026-10-14/15)
+
+- **Ruleset `protect-main`** (Active, default branch, empty bypass list): restrict deletions, block force pushes, PR required with 0 approvals,
+  required checks `gitleaks` / `semgrep` / `trivy` with source GitHub Actions. Fork PR workflows from external contributors need approval.
+- **4a: direct push to `main` rejected by the server.** An empty commit pushed over SSH got `GH013: Repository rule violations` (PR required, 3 checks expected).
+  The local hooks showed "Skipped" and let the commit through. Same SSH credential an agent on this machine would use, so TB7 "agent pushes to main" moves from H to tested.
+- **4b: a failing PR was blocked.** PR #1 added `lookup_role()` with an f-string SQL query. The local semgrep hook blocked the commit; `git commit --no-verify` skipped it in one flag.
+  In CI `semgrep` failed, the merge button was disabled, and no "bypass rules" option was offered to the owner. → hooks are feedback, the server-side check is the control.
+- **4c: fixed, then merged.** Parameterized query → all 3 checks green → merged as `e37ea25`.
+- **CI went red on an unchanged image again, one day later.** The PR's `trivy` failed on 8 HIGH findings: curl CVE-2026-8286 / CVE-2026-8927
+  across 4 binary packages from one source package (`+deb13u5` → `+deb13u7`), again from the `python:3.11` base, not the PR. `main` was red too.
+  Per-CVE `--only-upgrade` lines don't scale, so PR #2 (`6f8d0c5`) replaced the librsvg line with `apt-get upgrade -y`. The agent tested it first on a clean `git archive` of `main`
+  with `--pull` (gate exit 0, curl `+deb13u7`, librsvg `+deb13u1`; test image deleted). It went in its own PR, merged before 4b continued, so the test PR failed for one reason only.
+  → Trade-off: builds are no longer reproducible (same Dockerfile, different packages on different days). → D6 (slim base), digest pin + Dependabot, scheduled scan
+- **The agent read CI results through the unauthenticated GitHub REST API** (`curl` to `api.github.com`; `gh` isn't installed). Job steps and annotations were public; the job logs need auth,
+  so the user pasted the Trivy table. Read-only and requested, but still unprompted outbound calls from the workstation. → D12 (egress allowlist)
+- **Gates check exactly what their rule says.** The fix left a stray `f` prefix (`f"... = ?"`): harmless and correctly not flagged by the taint rule, and nothing in CI lints style.
+  A typo in a commit message on `main` (`llm-=tool`) now stays, because force pushes are blocked. → D14 (a gate is not a review)
+- **Residual risks the ruleset does not cover:**
+  - An admin (or a token with admin rights) can edit or disable the ruleset, push, and re-enable it. It leaves a trace in the ruleset History and the account security log, but nothing blocks it.
+  - "Source: GitHub Actions" binds the check to the Actions app, not to this workflow file. A PR can edit `container-scan.yml` so the `trivy` job exits 0, or add another job named `trivy`,
+    and still produce a genuine green check. CODEOWNERS on `.github/` with required review would close this; not possible on a solo repo. → D13, D14
+  - With 0 required approvals, anyone with write access (or an agent holding such a token) can self-merge a PR whose checks pass.
+- **The runner image isn't pinned.** A job notice says `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19, inside otherwise SHA-pinned CI. → D13 (supply chain)
+
 ## Plan revision (2026-10-13)
 
 Status: **D1–D4 done; D5–D15 are planned, not yet done or verified.** Nothing in the table below is a working control yet.
+Update 2026-10-15: **D5 done** (failing PR blocked, then merged once fixed; bypass list empty; see D5 – Required checks).
 
 Before D5 I had Codex review the remaining plan, then had Claude Code check Codex's suggestions against the repo, then sent Claude's view back to Codex.
 Codex's factual claims (README still says `.env` is committed, `/chat` trusts a self-declared `user`, `.trivyignore` ignores by rule ID) checked out.
@@ -107,7 +133,10 @@ Scope for D8–D10: 3–5 representative attack cases, one complete attack chain
 ## Open follow-ups
 
 - [ ] Fix README line 6 (still says `.env` is committed; it was removed from history in D2).
-- [ ] D5: check the repo is public (free plan: protected branches on public repos only; private needs a paid plan); require status checks, not reviews (no second reviewer).
+- [x] D5: check the repo is public (free plan: protected branches on public repos only; private needs a paid plan); require status checks, not reviews (no second reviewer).
+- [ ] Pin the base image by digest and add `dependabot.yml` (github-actions + docker), plus a scheduled container scan, so live-CVE breaks show up outside PRs.
+- [ ] Pin the runner image (`ubuntu-24.04`) or decide to accept `ubuntu-latest` moving to Ubuntu 26 on 2026-10-19.
+- [ ] `lookup_role()` in `app/tools.py` is a leftover from the D5 gate test and is not registered as a tool. Keep it as a safe example or remove it.
 - [ ] D5/D6: narrow `.trivyignore` from rule IDs to the `/app/.env` path (`.trivyignore.yaml`).
 - [ ] D6: container-secret fix, before the `.trivyignore` exceptions expire on 2026-11-30. Keep the vulnerable build as a tagged baseline.
 - [ ] Before D8: add the `docs/` folder with the indirect-injection document that D1 skipped.
