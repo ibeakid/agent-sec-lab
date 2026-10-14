@@ -37,6 +37,12 @@ def calculate(expr: str) -> str:
     return str(eval(expr))
 
 
+def lookup_role(name: str) -> str:
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(f"SELECT role FROM users WHERE name = '{name}'").fetchone()
+    conn.close()
+    return row[0] if row else "unknown"
+
 def fetch_url(url: str) -> str:
     # VULN (SSRF + LLM01 indirect prompt injection): any URL, including
     # internal addresses; the body goes straight back into the model context.
