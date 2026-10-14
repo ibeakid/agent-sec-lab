@@ -3,10 +3,12 @@
 #   docker run --rm -p 127.0.0.1:8000:8000 agent-sec-lab
 FROM python:3.11
 
-# Temporary (D5, 2026-10-14): CVE-2026-96889 (librsvg, HIGH) is fixed in Debian but not yet in python:3.11.
-# Remove once the upstream base image ships librsvg 2.60.0+dfsg-1+deb13u1 or later.
+# Apply Debian security fixes newer than the python:3.11 base image (D5, 2026-10-14).
+# Without this, the Trivy gate (--ignore-unfixed) fails whenever Debian ships a fix the base image
+# lacks (seen: librsvg CVE-2026-96889, curl CVE-2026-8286/-8927). Trade-off: builds are less
+# reproducible. Revisit with the slim base (D6) and a pinned digest.
 RUN apt-get update \
- && apt-get install -y --only-upgrade librsvg2-2 librsvg2-common librsvg2-dev gir1.2-rsvg-2.0 \
+ && apt-get upgrade -y \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
