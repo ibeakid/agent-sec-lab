@@ -191,6 +191,35 @@ Format: what happened → why it matters → which day it feeds.
   - D4's OSV scan of `uv.lock` showed 0 because the advisory **didn't exist yet**, not because it was unfixed (`--ignore-unfixed` was never the filter here). A scan is a snapshot of *known* vulns.
   - Three live-DB breaks in 9 days (librsvg, curl, certifi): PR-triggered scans catch new advisories only when someone happens to push. → Dependabot security updates (pip/uv) + scheduled scan, see follow-ups. → D13
   - While D6 was unmerged, `.env*` was ignored only on the D6 branch: on `main` and the fix branch `.env.canary` showed as untracked (committable). An ignore rule protects only the branches that have it. → D14
+- **A merged PR doesn't stop pushes to its branch.** The certifi NOTES commit was pushed to `d6-guardrails` after PR #4 had merged, so it sat off `main` until a second PR (#6). Check the PR is still open before pushing follow-ups.
+
+## D7 – ZAP API DAST (2026-10-22)
+
+- **Setup:** ZAP `ghcr.io/zaproxy/zaproxy@sha256:5ccfff9a…` (pulled as `:stable`, pinned by digest for the run; GHCR reachable while Docker Hub isn't).
+  App image `agent-sec-lab:d7` from `main` (incl. certifi fix), run with `LLM_BACKEND=mock` on `docker network create --internal d7-net`, **no published port**:
+  only containers on that network can reach it, and the app (`fetch_url` SSRF, Ollama) can't reach the internet or the host. Reports written to `~/zap-d7`, outside the repo.
+- **Scan:** `zap-api-scan.py -t http://d7-app:8000/openapi.json -f openapi` (OpenAPI import + active scan). Exit 2: 1 Low (X-Content-Type-Options missing, `/openapi.json` + `/chat`),
+  11 informational 4xx, PASS 112, **0 High/Medium**. Report insight: "8 ZAP errors logged", 2% network failures; `zap.log` was inside the `--rm` container and is lost (likely the update check on the internal network, unverified).
+- **Evidence it reached `POST /chat`:** FastAPI emits OpenAPI **3.1.0**; ZAP parsed it (node `({message,user})`). The app's access log (`docker logs --since <start>`, all from ZAP's container IP) shows
+  **252 × `POST /chat` → 200**, plus 21 × 404 on `/` and a random path, 13 × 404 cloud-metadata probes (`/latest/meta-data/`, `/computeMetadata/v1/`, `/opc/…`), `/actuator/health`, 2 × 307.
+  No 422 and no 500: every body was valid JSON with string values; ZAP only replaced field *values*, never sent malformed JSON or wrong types, and the app never crashed.
+- **Positive control (same endpoint, by hand):** `' OR '1'='1` → `mock: no tool needed` (what ZAP's payloads hit); `query nobody` → `no rows`; `query x' OR '1'='1` → **all users incl. `root … admin`**.
+  The SQLi is reachable over HTTP; ZAP's 252 requests never triggered it because the mock calls `query_db` only for messages matching `query <x>`, and payloads replace the whole value.
+  → DAST assumes *parameter → sink*. Here a natural-language interpreter sits between the HTTP field and the sink, so the payload must also *persuade* it. With a real model it's worse (non-deterministic). → D8, D9
+- **Coverage and limits:**
+  - Covered: HTTP layer of `POST /chat` and `/openapi.json` (headers, error handling, input injection into `message`/`user` values), plus generic path and cloud-metadata probes.
+  - Not covered: the LLM layer (prompt injection, `ADMIN_API_KEY` system-prompt leak, tool misuse: SQLi via `query_db`, `eval` in `calculate`, SSRF via `fetch_url`, file read via `read_file`);
+    the real model (mock only: fast, deterministic, safe, but near-identical responses give a differential scanner nothing to compare); missing auth / rate limiting
+    (a scanner can't know an endpoint *should* require auth); malformed-JSON / type-confusion robustness.
+  - Evidence limits: uvicorn's access log has method/path/status but no bodies, so which payload produced which response isn't recorded; `zap.log` lost with `--rm`.
+  - → "0 High" from DAST on an LLM app means "no HTTP-layer findings", not "no vulnerabilities". → D14
+  - Missing auth can't be found by behaviour: a 200 without credentials looks like a public-by-design endpoint, and `openapi.json` declares no `securitySchemes`.
+    It comes from the threat model / design review, then an explicit test ("unauthenticated `POST /chat` → 401") once auth exists. → D10
+  - To reach the SQLi automatically: change *what* you send (wrap payloads as `query <payload>`: ZAP payload/input-vector script or Fuzzer prefix; only works because the mock's trigger is known,
+    a real model must be persuaded → D8/D9), or change *where* you test (call `query_db` directly). D3's Semgrep rule already flags this sink; `# nosemgrep` silences it on purpose.
+    → SAST found what DAST missed; layers complement each other. → D14
+- **Agent observations:** with the D6 sandbox, my Bash can't reach the Docker socket (`permission denied`), so you ran every Docker command and I read the reports and log from `~/zap-d7`.
+  That folder is outside the repo but still readable by the sandbox (read is deny-list only). → D12
 
 ## Plan revision (2026-10-13)
 
