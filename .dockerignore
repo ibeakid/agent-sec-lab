@@ -8,3 +8,7 @@ data/lab.db
 sbom.cdx.json
 osv-results.json
 *.sarif
+
+# secrets stay out of every image (D6); pass them at runtime instead
+.env*
+!.env.example
