@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.canary)",
+      "Read(./.env.local)",
+      "Read(./.env.production)",
+      "Read(./.env.test)", 
+      "Bash(cat .env:*)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false
+  }
+}
