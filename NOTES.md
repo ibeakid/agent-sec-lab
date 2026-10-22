@@ -185,6 +185,12 @@ Format: what happened → why it matters → which day it feeds.
   - **Residual risks:** shared kernel with Docker's VM; the agent's own Claude login lives in the container (an exfil target); allowlists usually pass DNS (DNS exfil to test).
   - **Isolation tests (must all fail/be blocked before D11):** read `/mnt/c`, `/mnt/wsl`, `~/.ssh`, `~/.aws`, `$SSH_AUTH_SOCK`; reach `/var/run/docker.sock`;
     `curl` host Ollama `:11434`, app `:8000`, Windows host IP; `curl https://example.com` blocked vs `api.anthropic.com` allowed; `nslookup` of a random subdomain; `git push` (no credential).
+- **CI went red a third time without a code change, now in the app's own dependencies.** The D6 PR's `trivy` failed on GHSA-6q48-6c7w-9gw2 (CRITICAL):
+  certifi 2026.7.22 bundles emSign root CAs with compromised intermediate keys; fixed in 2026.10.19. certifi is transitive (`httpx` → `httpcore` → certifi), pinned only in `uv.lock`.
+  The secret scan on the same run was clean, so the PR's own change passed. Fixed in a separate PR #5 (`uv lock --upgrade-package certifi`, merged as `d92c156`), then "Update branch" on the D6 PR.
+  - D4's OSV scan of `uv.lock` showed 0 because the advisory **didn't exist yet**, not because it was unfixed (`--ignore-unfixed` was never the filter here). A scan is a snapshot of *known* vulns.
+  - Three live-DB breaks in 9 days (librsvg, curl, certifi): PR-triggered scans catch new advisories only when someone happens to push. → Dependabot security updates (pip/uv) + scheduled scan, see follow-ups. → D13
+  - While D6 was unmerged, `.env*` was ignored only on the D6 branch: on `main` and the fix branch `.env.canary` showed as untracked (committable). An ignore rule protects only the branches that have it. → D14
 
 ## Plan revision (2026-10-13)
 
@@ -227,7 +233,8 @@ Scope for D8–D10: 3–5 representative attack cases, one complete attack chain
 
 - [ ] Fix README line 6 (still says `.env` is committed; it was removed from history in D2).
 - [x] D5: check the repo is public (free plan: protected branches on public repos only; private needs a paid plan); require status checks, not reviews (no second reviewer).
-- [ ] Pin the base image by digest and add `dependabot.yml` (github-actions + docker), plus a scheduled container scan, so live-CVE breaks show up outside PRs.
+- [ ] Pin the base image by digest and add `dependabot.yml` (github-actions + docker + uv), plus a scheduled container scan, so live-CVE breaks show up outside PRs.
+      Priority raised after the third break (certifi, D6); also enable Dependabot security updates in repo settings.
 - [ ] Pin the runner image (`ubuntu-24.04`) or decide to accept `ubuntu-latest` moving to Ubuntu 26 on 2026-10-19.
 - [ ] `lookup_role()` in `app/tools.py` is a leftover from the D5 gate test and is not registered as a tool. Keep it as a safe example or remove it.
 - [x] D5/D6: narrow `.trivyignore` from rule IDs to the `/app/.env` path. Superseded: `.trivyignore` removed in D6.
